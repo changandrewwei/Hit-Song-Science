@@ -39,6 +39,16 @@ G4$rank[is.na(G4$rank)] = 0#將表格合併後的缺失值(N/A)改成以0表示
 
 G4$rank[G4$rank!=0] = 1#將已經進榜的歌曲以1表示入榜(替換掉原來的排名)
 
+#將Licensed跟official_video變成二元變數
+
+G4$Licensed[is.na(G4$Licensed)] = 0
+
+G4$Licensed[G4$Licensed==TRUE] = 1
+
+G4$official_video[is.na(G4$official_video)] = 0
+
+G4$official_video[G4$official_video==TRUE] = 1
+
 #將字串型態轉換成數值型態
 
 G4$Likes=as.numeric(G4$Likes)
@@ -46,6 +56,10 @@ G4$Likes=as.numeric(G4$Likes)
 G4$Comments=as.numeric(G4$Comments)
 
 G4$Stream=as.numeric(G4$Stream)
+
+G4$Licensed=as.numeric(G4$Licensed)
+
+G4$official_video=as.numeric(G4$official_video)
 
 #法1:資料的缺失值補0
 
@@ -61,6 +75,40 @@ G4$Views[is.na(G4$Views)] = 0
 
 G4[is.na(G4)] = 0
 
+#法3:用平均值(Mean)來填補缺失值
+
+#View欄位
+
+G4M1 = mean(G4[, 31], na.rm = T)
+
+na.rows1 = is.na(G4[, 31])
+
+G4[na.rows1, 31] = G4M1
+
+#Likes欄位
+
+G4M2 = mean(G4[, 32], na.rm = T)
+
+na.rows2 = is.na(G4[, 32])
+
+G4[na.rows2, 32] = G4M2
+
+#Comments欄位
+
+G4M3 = mean(G4[, 33], na.rm = T)
+
+na.rows3 = is.na(G4[, 33])
+
+G4[na.rows3, 33] = G4M3
+
+#Stream欄位
+
+G4M4 = mean(G4[, 37], na.rm = T)
+
+na.rows4 = is.na(G4[, 37])
+
+G4[na.rows4, 37] = G4M4
+
 #將資料分割成測試集和訓練集
 
 set.seed(123)  # 設置隨機種子
@@ -74,7 +122,7 @@ Testset = G4[!split1,]
 #執行羅吉斯回歸將所有變數全部放入建立模型
 
 P = glm(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+Views+Likes+Comments+Stream
-        ,data = Trainset,family = "binomial")
+        +Licensed+official_video,data = Trainset,family = "binomial")
 
 #進行逐步回歸(將影響顯著的模型放入)
 
@@ -125,7 +173,7 @@ Trainset[is.na(Trainset)] = 0
 
 #建立隨機森林模型
 
-rm = randomForest(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+Views+Likes+Stream
+rm = randomForest(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+Views+Likes+Comments+Stream
                   ,data = Trainset,ntree=1000)
 
 #使用caret中的train函數進行交叉驗證(隨機森林)
