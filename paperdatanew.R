@@ -39,6 +39,10 @@ G4$rank[is.na(G4$rank)] = 0#將表格合併後的缺失值(N/A)改成以0表示
 
 G4$rank[G4$rank!=0] = 1#將已經進榜的歌曲以1表示入榜(替換掉原來的排名)
 
+G4$rank=factor(G4$rank)
+
+summary(G4)
+
 #將Licensed跟official_video變成二元變數
 
 G4$Licensed[is.na(G4$Licensed)] = 0
@@ -174,12 +178,12 @@ Trainset[is.na(Trainset)] = 0
 #建立隨機森林模型
 
 rm = randomForest(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+Views+Likes+Comments+Stream
-                  ,data = Trainset,ntree=1000)
+                  +Licensed+official_video,data = Trainset,ntree=1000)
 
 #使用caret中的train函數進行交叉驗證(隨機森林)
 
 model2 = train(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+Views+Likes+Comments
-               ,data = Trainset, method = "rf",trControl = TC,ntree = 1000)
+               ,data = Trainset, method = "rf",trControl = TC,ntree = 100)
 
 #輸出交叉驗證結果(隨機森林)
 
@@ -194,6 +198,8 @@ pred2 =  predict(rm, Testset, type="response")
 predicted2 = pred2 > 0.5
 
 #繪製混淆矩陣(隨機森林)
+
+summary(rm)
 
 cm2 = table(actual, predicted2)
 
