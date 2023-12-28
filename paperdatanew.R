@@ -8,6 +8,10 @@ library(boot)
 library(pROC)
 install.packages("randomForest")
 library(randomForest)
+install.packages("caTools")
+library("caTools")
+install.packages("xgboost")
+library(xgboost)
 
 #更改工作路徑
 
@@ -21,6 +25,10 @@ songs = read_csv("../songs.csv")
 
 spotifytop100 = read_csv("../spotifytop100.csv")
 
+spotifytop = read_csv("../top10s.csv")
+
+spotify = read_csv("../tracks_featuresnew.csv")
+
 youtube = read_csv("../Spotify_Youtube.csv")
 
 #進行表格合併(all.x=TRUE保留左側變數)
@@ -28,6 +36,8 @@ youtube = read_csv("../Spotify_Youtube.csv")
 G3=merge(spotifytop100,songs,by=c("song","artist"),all.x = TRUE)
 
 G4=merge(G3,youtube,by=c("song","artist"),all.x = TRUE)
+
+summary(G4)
 
 #將資料表格中的亂碼替換掉
 
@@ -83,35 +93,39 @@ G4[is.na(G4)] = 0
 
 #View欄位
 
-G4M1 = mean(G4[, 31], na.rm = T)
+G4M1 = mean(G4[, 38], na.rm = T)
 
-na.rows1 = is.na(G4[, 31])
+na.rows1 = is.na(G4[, 38])
 
-G4[na.rows1, 31] = G4M1
+G4[na.rows1, 38] = G4M1
 
 #Likes欄位
 
-G4M2 = mean(G4[, 32], na.rm = T)
+G4M2 = mean(G4[, 39], na.rm = T)
 
-na.rows2 = is.na(G4[, 32])
+na.rows2 = is.na(G4[, 39])
 
-G4[na.rows2, 32] = G4M2
+G4[na.rows2, 39] = G4M2
 
 #Comments欄位
 
-G4M3 = mean(G4[, 33], na.rm = T)
+G4M3 = mean(G4[, 40], na.rm = T)
 
-na.rows3 = is.na(G4[, 33])
+na.rows3 = is.na(G4[, 40])
 
-G4[na.rows3, 33] = G4M3
+G4[na.rows3, 40] = G4M3
 
 #Stream欄位
 
-G4M4 = mean(G4[, 37], na.rm = T)
+G4M4 = mean(G4[, 44], na.rm = T)
 
-na.rows4 = is.na(G4[, 37])
+na.rows4 = is.na(G4[, 44])
 
-G4[na.rows4, 37] = G4M4
+G4[na.rows4, 44] = G4M4
+
+#將剩餘缺失值補0(以防隨機森林出錯)
+
+G4[is.na(G4)] = 0
 
 #將資料分割成測試集和訓練集
 
@@ -195,7 +209,7 @@ pred2 =  predict(rm, Testset, type="response")
 
 #以0.5為界判斷測試集為1或0
 
-predicted2 = pred2 > 0.5
+predicted2 = ifelse(pred2 > 0.5, 1, 0)
 
 #繪製混淆矩陣(隨機森林)
 
@@ -203,10 +217,59 @@ summary(rm)
 
 cm2 = table(actual, predicted2)
 
-print(cm2)
+confusionMatrix(cm2)#製作混淆矩陣
+
+print(cm2)#印出混淆矩陣
+
+summary(cm2)
 
 #繪製ROC曲線(隨機森林)
 
 troc2=roc(actual~pred2,plot=TRUE,print.auc=TRUE)
 
 as.numeric(troc2$auc)
+
+#Xgboost
+
+set.seed(123)
+
+trainset_x = Trainset[,c("pop","live","dB","bpm","nrgy","dur","dnce","acous","spch",
+                         "Views","Likes","Comments","Stream","Licensed",
+                         "official_video")]
+
+trainset_y = Trainset$rank
+
+trainset_x = as.matrix(trainset_x)
+
+xgdata = xgb.DMatrix(trainset_x,label = trainset_y)
+
+xg_model = xgboost(data = xgdata,
+                   nrounds = 100)
+
+# 使用模型進行測試集預測
+
+testset_x = Testset[,c("pop","live","dB","bpm","nrgy","dur","dnce","acous","spch",
+                       "Views","Likes","Comments","Stream","Licensed",
+                       "official_video")]
+testset_x = as.matrix(testset_x)
+
+#用Testset(測試集)預測概率
+
+xg_predtest = predict(xg_model, newdata = xgb.DMatrix(testset_x))
+
+#以0.5為界判斷測試集為1或0
+xg_pred_classes_test = ifelse(xg_predtest > 0.5, 1, 0)
+
+#繪製混淆矩陣(xgboost)
+
+conf_matrix_test = table(Actual = Testset$rank, Predicted = xg_pred_classes_test)
+
+print("Confusion Matrix (Test Set):")
+
+print(conf_matrix_test)
+
+#繪製ROC曲線(xgboost)
+
+trocx=roc(actual~xg_predtest,plot=TRUE,print.auc=TRUE)
+
+as.numeric(trocx$auc)
