@@ -12,6 +12,11 @@ install.packages("caTools")
 library("caTools")
 install.packages("xgboost")
 library(xgboost)
+install.packages("e1071")
+library("e1071")
+install.packages("neuralnet")
+library("neuralnet")
+
 
 #更改工作路徑
 
@@ -93,35 +98,59 @@ G4[is.na(G4)] = 0
 
 #View欄位
 
-G4M1 = mean(G4[, 38], na.rm = T)
+G4M1 = mean(G4[, 41], na.rm = T)
 
-na.rows1 = is.na(G4[, 38])
+na.rows1 = is.na(G4[, 41])
 
-G4[na.rows1, 38] = G4M1
+G4[na.rows1, 41] = G4M1
 
 #Likes欄位
 
-G4M2 = mean(G4[, 39], na.rm = T)
+G4M2 = mean(G4[, 42], na.rm = T)
 
-na.rows2 = is.na(G4[, 39])
+na.rows2 = is.na(G4[, 42])
 
-G4[na.rows2, 39] = G4M2
+G4[na.rows2, 42] = G4M2
 
 #Comments欄位
 
-G4M3 = mean(G4[, 40], na.rm = T)
+G4M3 = mean(G4[, 43], na.rm = T)
 
-na.rows3 = is.na(G4[, 40])
+na.rows3 = is.na(G4[, 43])
 
-G4[na.rows3, 40] = G4M3
+G4[na.rows3, 43] = G4M3
 
 #Stream欄位
 
-G4M4 = mean(G4[, 44], na.rm = T)
+G4M4 = mean(G4[, 47], na.rm = T)
 
-na.rows4 = is.na(G4[, 44])
+na.rows4 = is.na(G4[, 47])
 
-G4[na.rows4, 44] = G4M4
+G4[na.rows4, 47] = G4M4
+
+#neg欄位
+
+G4M5 = mean(G4[, 25], na.rm = T)
+
+na.rows5 = is.na(G4[, 25])
+
+G4[na.rows5, 25] = G4M5
+
+#neu欄位
+
+G4M6 = mean(G4[, 26], na.rm = T)
+
+na.rows6 = is.na(G4[, 26])
+
+G4[na.rows6, 26] = G4M6
+
+#pos欄位
+
+G4M7 = mean(G4[, 27], na.rm = T)
+
+na.rows7 = is.na(G4[, 27])
+
+G4[na.rows7, 27] = G4M7
 
 #將剩餘缺失值補0(以防隨機森林出錯)
 
@@ -139,7 +168,7 @@ Testset = G4[!split1,]
 
 #執行羅吉斯回歸將所有變數全部放入建立模型
 
-P = glm(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+Views+Likes+Comments+Stream
+P = glm(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+neg+neu+pos+Views+Likes+Comments+Stream
         +Licensed+official_video,data = Trainset,family = "binomial")
 
 #進行逐步回歸(將影響顯著的模型放入)
@@ -177,6 +206,8 @@ cm = table(actual, predicted)
 
 print(cm)
 
+summary(G4)
+
 #繪製ROC曲線(羅吉斯回歸)
 
 troc=roc(actual~pred,plot=TRUE,print.auc=TRUE)
@@ -191,7 +222,7 @@ Trainset[is.na(Trainset)] = 0
 
 #建立隨機森林模型
 
-rm = randomForest(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+Views+Likes+Comments+Stream
+rm = randomForest(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+neg+neu+pos+spch+Views+Likes+Comments+Stream
                   +Licensed+official_video,data = Trainset,ntree=1000)
 
 #使用caret中的train函數進行交叉驗證(隨機森林)
@@ -208,6 +239,8 @@ print(model2)
 pred2 =  predict(rm, Testset, type="response")
 
 #以0.5為界判斷測試集為1或0
+
+pred2 = as.numeric(pred2)
 
 predicted2 = ifelse(pred2 > 0.5, 1, 0)
 
@@ -258,6 +291,7 @@ testset_x = as.matrix(testset_x)
 xg_predtest = predict(xg_model, newdata = xgb.DMatrix(testset_x))
 
 #以0.5為界判斷測試集為1或0
+
 xg_pred_classes_test = ifelse(xg_predtest > 0.5, 1, 0)
 
 #繪製混淆矩陣(xgboost)
@@ -273,3 +307,58 @@ print(conf_matrix_test)
 trocx=roc(actual~xg_predtest,plot=TRUE,print.auc=TRUE)
 
 as.numeric(trocx$auc)
+
+
+#SVM(支援向量機)
+
+SVM1 = svm(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+Views+Likes+Comments
+           ,data = Trainset,probability = TRUE)
+
+pred3 = predict(SVM1,Testset,probability = TRUE)
+
+summary(pred3)
+
+#繪製ROC曲線(SVM支援向量機)
+
+troc3 = roc(Testset$rank,as.numeric(attr(pred3, "probabilities")[, 2]), plot = TRUE, print.auc = TRUE)
+
+as.numeric(troc3$auc)
+
+
+#Neural Network(神經網路)
+
+#建立Neural Network模型
+
+NN = neuralnet(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+Stream
+               ,data = Trainset,
+               hidden = c(2,1),
+               learningrate = 0.01,
+               threshold = 0.01,
+               stepmax = 5e5,
+               linear.output = TRUE 
+               )
+
+plot(NN)#繪出神經網路模型
+
+#用Testset(測試集)預測概率
+
+pred4 = predict(NN, Testset, type="response")
+
+#以0.5為界判斷測試集為1或0
+
+predicted4 = ifelse(pred4[,2] > 0.5, 1, 0)
+
+#繪製混淆矩陣(Neural Network)
+
+cm4 = table(actual, pred4)
+
+confusionMatrix(cm4)#製作混淆矩陣
+
+print(cm4)#印出混淆矩陣
+
+#繪製ROC曲線(Neural Network)
+
+troc4=roc(actual~pred4,plot=TRUE,print.auc=TRUE)
+
+as.numeric(troc4$auc)
+
