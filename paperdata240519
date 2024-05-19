@@ -167,15 +167,6 @@ G4[na.rows7, 27] = G4M7
 
 G4[is.na(G4)] = 0
 
-#X做Normalize
-
-xVar = c("bpm","nrgy","dnce","val","dur","acous","spch","pop","Views","Likes",
-         "Comments","Stream")
-
-process = preProcess(Trainset[, xVar], method = c("range"))
-
-norm_scale = predict(process, Trainset[, xVar])
-
 #將資料分割成測試集和訓練集
 
 set.seed(123)  # 設置隨機種子
@@ -186,13 +177,25 @@ Trainset = G4[split1,]
 
 Testset = G4[!split1,]
 
-#mix的方法
+#X做Normalize
 
+xVar = c("bpm","nrgy","dnce","val","dur","acous","spch","pop","Views","Likes",
+         "Comments","Stream")
+
+process = preProcess(Trainset[, xVar], method = c("range"))
+
+norm_scale = predict(process, Trainset[, xVar])
+
+non_xVar = setdiff(names(Trainset),xVar)
+
+Trainset = cbind(Trainset[, non_xVar],norm_scale)
+
+#mix的方法
 
 #執行羅吉斯回歸將所有變數全部放入建立模型
 
 P = glm(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+neg+neu+pos+Views+Likes+Comments+Stream
-        +Licensed+official_video,data = down_train,family = "binomial")
+        +Licensed+official_video,data = Trainset,family = "binomial")
 
 #進行逐步回歸(將影響顯著的模型放入)
 
