@@ -1,0 +1,466 @@
+install.packages("readr")
+
+library(readr)
+
+install.packages("caret")
+
+library(caret)
+
+install.packages("glmnet")
+
+library(glmnet)
+
+install.packages("boot")
+
+library(boot)
+
+library(pROC)
+
+install.packages("randomForest")
+
+library(randomForest)
+
+install.packages("caTools")
+
+library("caTools")
+
+install.packages("xgboost")
+
+library(xgboost)
+
+install.packages("e1071")
+
+library("e1071")
+
+install.packages("neuralnet")
+
+library("neuralnet")
+
+install.packages("ROSE")
+
+library("ROSE")
+
+#install.packages("installr")
+
+#installr::updateR()
+
+suppressMessages(library(unbalanced))
+
+#更改工作路徑
+
+setwd("D:/")
+
+getwd()
+
+#讀取資料集
+
+songs = read_csv("../songs.csv")
+
+spotifytop100 = read_csv("../spotifytop100.csv")
+
+youtube = read_csv("../Spotify_Youtube.csv")
+
+#進行表格合併(all.x=TRUE保留左側變數)
+
+G3=merge(spotifytop100,songs,by=c("song","artist"),all.x = TRUE,suffixes = c("", ""))
+
+G4=merge(G3,youtube,by=c("song","artist"),all.x = TRUE,suffixes = c("", ""))
+
+summary(G4)
+
+#將資料表格中的亂碼替換掉
+
+G4$added=gsub("\\?","/",G4$added)
+
+#將資料表中的的目標預測變量變成以0和1進行二元變數表示(沒進榜為0,進榜為1)
+
+G4$rank[is.na(G4$rank)] = 0#將表格合併後的缺失值(N/A)改成以0表示
+
+G4$rank[G4$rank!=0] = 1#將已經進榜的歌曲以1表示入榜(替換掉原來的排名)
+
+G4$rank=factor(G4$rank)
+
+summary(G4)
+
+#將Licensed跟official_video變成二元變數
+
+G4$Licensed[is.na(G4$Licensed)] = 0
+
+G4$Licensed[G4$Licensed==TRUE] = 1
+
+G4$official_video[is.na(G4$official_video)] = 0
+
+G4$official_video[G4$official_video==TRUE] = 1
+
+#將字串型態轉換成數值型態
+
+G4$Likes=as.numeric(G4$Likes)
+
+G4$Comments=as.numeric(G4$Comments)
+
+G4$Stream=as.numeric(G4$Stream)
+
+G4$Licensed=as.numeric(G4$Licensed)
+
+G4$official_video=as.numeric(G4$official_video)
+
+#法1:資料的缺失值補0
+
+#G4$Likes[is.na(G4$Likes)] = 0
+
+#G4$Comments[is.na(G4$Comments)] = 0
+
+#G4$Stream[is.na(G4$Stream)] = 0
+
+#G4$Views[is.na(G4$Views)] = 0
+
+G4$neu[is.na(G4$neu)] = 0
+
+G4$pos[is.na(G4$pos)] = 0
+
+G4$neg[is.na(G4$neg)] = 0
+
+#法2:將所有缺失值補0
+
+G4[is.na(G4)] = 0
+
+#法3:用平均值(Mean)來填補缺失值
+
+#pop欄位
+
+G4M = mean(G4[, 15], na.rm = T)
+
+na.rows = is.na(G4[, 15])
+
+G4[na.rows, 15] = G4M
+
+#View欄位
+
+G4M1 = mean(G4[, 34], na.rm = T)
+
+na.rows1 = is.na(G4[, 34])
+
+G4[na.rows1, 34] = G4M1
+
+#Likes欄位
+
+G4M2 = mean(G4[, 35], na.rm = T)
+
+na.rows2 = is.na(G4[, 35])
+
+G4[na.rows2, 35] = G4M2
+
+#Comments欄位
+
+G4M3 = mean(G4[, 36], na.rm = T)
+
+na.rows3 = is.na(G4[, 36])
+
+G4[na.rows3, 36] = G4M3
+
+#Stream欄位
+
+G4M4 = mean(G4[, 40], na.rm = T)
+
+na.rows4 = is.na(G4[, 40])
+
+G4[na.rows4, 40] = G4M4
+
+#neg欄位
+
+G4M5 = mean(G4[, 25], na.rm = T)
+
+na.rows5 = is.na(G4[, 25])
+
+G4[na.rows5, 25] = G4M5
+
+#neu欄位
+
+G4M6 = mean(G4[, 26], na.rm = T)
+
+na.rows6 = is.na(G4[, 26])
+
+G4[na.rows6, 26] = G4M6
+
+#pos欄位
+
+G4M7 = mean(G4[, 27], na.rm = T)
+
+na.rows7 = is.na(G4[, 27])
+
+G4[na.rows7, 27] = G4M7
+
+#將剩餘缺失值補0(以防隨機森林出錯)
+
+G4[is.na(G4)] = 0
+
+G4 = G4[-c(21:22)]
+
+G4 = G4[-c(23:31)]
+
+G4 = G4[-c(30:51)]
+
+G4 = G4[-c(26)]
+
+G4 = G4[-c(3)]
+
+#對變數做Normalize
+
+xVar = c("bpm","nrgy","dnce","dB","live","val","dur","acous","spch","pop","Views","Likes",
+         "Comments","Stream")#建立要Normalize的變數向量
+
+process = preProcess(G4[, xVar], method = c("range"))
+
+norm_scale = predict(process, G4[, xVar])
+
+non_xVar = setdiff(names(G4),xVar)
+
+G4 = cbind(G4[, non_xVar],norm_scale)
+
+#將資料分割成測試集和訓練集
+
+set.seed(123)  # 設置隨機種子
+
+split1 = sample.split(G4$rank, SplitRatio=0.7)
+
+Trainset = G4[split1,]
+
+Testset = G4[!split1,]
+
+#Imbalanced learn ( Combination => over-sampling + under-sampling) #SMOTE+ENN
+
+xVar2 = c("bpm","nrgy","dnce","dB","live","val","dur","acous","spch","pop","Views","Likes","Comments"
+          ,"Stream","pos","neg","neu","Licensed","official_video")#建立要考量的變數
+
+#建立新的公式，把考量的變數加進去
+
+Trainset = Trainset[order(Trainset$pop), ]  # 根據某列進行排序
+
+Var_formula = as.formula(paste("rank ~",paste(xVar2,collapse = "+")))
+ 
+Trainset2 = ovun.sample(Var_formula, data = Trainset, method = "both",N = nrow(Trainset))
+ 
+Trainset = Trainset2$data
+ 
+#執行羅吉斯回歸將所有變數全部放入建立模型
+
+P = glm(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+neg+neu+pos+Views+Likes+Comments+Stream
+        +Licensed+official_video,data = Trainset,family = "binomial")
+
+#進行逐步回歸(將影響顯著的模型放入)
+
+Finalml = step(P,scope = list(upper=~.),direction = "both")
+
+summary(Finalml)
+
+#使用caret中的train函數進行交叉驗證(羅吉斯回歸)
+
+TC = trainControl(method = "cv",number = 5)
+
+model1 = train(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+Views+Likes+Comments+Stream+neg
+               +pos+neu+Licensed+official_video,data = Trainset,method = "glm",trControl = TC)
+
+#輸出交叉驗證結果(羅吉斯回歸)
+
+print(model1)
+
+#用Testset(測試集)預測概率
+
+pred =  predict(finalml, Testset, type="response")
+
+#用交叉驗證的模型預測概率
+
+pred =  predict(model1, Testset, type="prob")
+
+#以0.5為界判斷測試集為1或0
+
+predicted <- ifelse(pred > 0.5, 1, 0)
+
+# 將實際觀測值轉換為二元變數
+
+actual = Testset$rank
+
+#繪製混淆矩陣(羅吉斯回歸)
+
+cm = table(actual, predicted)
+
+print(cm)
+
+summary(G4)
+
+#求出Accuracy(羅吉斯回歸)
+
+accuracy4 = sum(diag(cm))/sum(cm)
+
+print(paste("Logistic Regression Final Accuracy =",sprintf("%1.2f%%", 100*accuracy4)))
+
+#繪製ROC曲線(羅吉斯回歸)
+
+troc=roc(actual~pred,plot=TRUE,print.auc=TRUE)
+
+as.numeric(troc$auc)
+
+#利用隨機森林預測
+
+#將Trainset(訓練集)的缺失值補0
+
+Trainset[is.na(Trainset)] = 0
+
+#建立隨機森林模型
+
+rm = randomForest(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+neg+neu+pos+spch+Views+Likes+Comments+Stream
+                  +Licensed+official_video,data = Trainset,ntree=1000)
+
+#使用caret中的train函數進行交叉驗證(隨機森林)
+
+model2 = train(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+neg+neu+pos+spch+Views+Likes+Comments+Stream
+               +Licensed+official_video,data = Trainset, method = "rf",trControl = TC,ntree = 3000)
+
+#輸出交叉驗證結果(隨機森林)
+
+print(model2)
+
+#用Testset(測試集)預測概率
+
+pred2 =  predict(rm, Testset, type="response")
+
+#以0.5為界判斷測試集為1或0
+
+pred2 = as.numeric(pred2)
+
+predicted2 = ifelse(pred2 > 0.5, 1, 0)
+
+#繪製混淆矩陣(隨機森林)
+
+summary(rm)
+
+cm2 = table(actual, predicted2)
+
+confusionMatrix(cm2)#製作混淆矩陣
+
+print(cm2)#印出混淆矩陣
+
+summary(cm2)
+
+accuracy3 = sum(diag(cm2))/sum(cm2)
+
+print(paste("Random Forest Final Accuracy =",sprintf("%1.2f%%", 100*accuracy3)))
+
+#繪製ROC曲線(隨機森林)
+
+troc2=roc(actual~pred2,plot=TRUE,print.auc=TRUE)
+
+as.numeric(troc2$auc)
+
+#Xgboost
+
+set.seed(123)
+
+trainset_x = Trainset[,c("pop","live","dB","bpm","nrgy","dur","dnce","acous","spch",
+                         "Views","Likes","Comments","neu","neg","pos","Stream","Licensed",
+                         "official_video")]
+
+trainset_y = Trainset$rank
+
+trainset_x = as.matrix(trainset_x)
+
+xgdata = xgb.DMatrix(trainset_x,label = trainset_y)
+
+xg_model = xgboost(data = xgdata,
+                   nrounds = 1000)
+
+# 使用模型進行測試集預測
+
+testset_x = Testset[,c("pop","live","dB","bpm","nrgy","dur","dnce","acous","spch",
+                       "Views","Likes","Comments","neu","neg","pos","Stream","Licensed",
+                       "official_video")]
+testset_x = as.matrix(testset_x)
+
+#用Testset(測試集)預測概率
+
+xg_predtest = predict(xg_model, newdata = xgb.DMatrix(testset_x))
+
+#以0.5為界判斷測試集為1或0
+
+xg_pred_classes_test = ifelse(xg_predtest > 0.5, 1, 0)
+
+#繪製混淆矩陣(xgboost)
+
+conf_matrix_test = table(Actual = Testset$rank, Predicted = xg_pred_classes_test)
+
+print("Confusion Matrix (Test Set):")
+
+print(conf_matrix_test)
+
+#繪製ROC曲線(xgboost)
+
+trocx=roc(actual~xg_predtest,plot=TRUE,print.auc=TRUE)
+
+as.numeric(trocx$auc)
+
+summary(conf_matrix_test)
+
+print(xg_model)
+
+accuracy = sum(diag(conf_matrix_test))/sum(conf_matrix_test)
+
+print(paste("XGboost Final Accuracy =",sprintf("%1.2f%%", 100*accuracy)))
+
+#SVM(支援向量機)
+
+SVM1 = svm(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+pos+neu+neg+spch+Views+Likes+Comments
+           ,data = Trainset,probability = TRUE)
+
+pred3 = predict(SVM1,Testset,probability = TRUE)
+
+summary(pred3)
+
+conf_matrix_test2 = table(Actual = Testset$rank, Predicted = pred3)
+
+accuracy2 = sum(diag(conf_matrix_test2))/sum(conf_matrix_test2)
+
+print(paste("SVM Final Accuracy =",sprintf("%1.2f%%", 100*accuracy2)))
+
+#繪製ROC曲線(SVM支援向量機)
+
+troc3 = roc(Testset$rank,as.numeric(attr(pred3, "probabilities")[, 2]), plot = TRUE, print.auc = TRUE)
+
+as.numeric(troc3$auc)
+
+
+#Neural Network(神經網路)
+
+#建立Neural Network模型
+
+NN = neuralnet(rank~pop+live+dB+bpm+nrgy+dur+dnce+acous+spch+Stream
+               ,data = Trainset,
+               hidden = c(2,1),
+               learningrate = 0.01,
+               threshold = 0.01,
+               stepmax = 5e5,
+               linear.output = TRUE 
+)
+
+plot(NN)#繪出神經網路模型
+
+#用Testset(測試集)預測概率
+
+pred4 = predict(NN, Testset, type="response")
+
+#以0.5為界判斷測試集為1或0
+
+predicted4 = ifelse(pred4[,2] > 0.5, 1, 0)
+
+#繪製混淆矩陣(Neural Network)
+
+cm4 = table(actual, pred4)
+
+confusionMatrix(cm4)#製作混淆矩陣
+
+print(cm4)#印出混淆矩陣
+
+#繪製ROC曲線(Neural Network)
+
+troc4=roc(actual~pred4,plot=TRUE,print.auc=TRUE)
+
+as.numeric(troc4$auc)
